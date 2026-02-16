@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <!-- Background -->
+    <path
+        android:fillColor="#FF6200EE"
+        android:pathData="M0,0 L320,0 L320,180 L0,180 Z" />
+    <!-- TV screen -->
+    <path
+        android:fillColor="#FF3700B3"
+        android:pathData="M90,30 L230,30 C233,30 235,32 235,35 L235,115 C235,118 233,120 230,120 L90,120 C87,120 85,118 85,115 L85,35 C85,32 87,30 90,30 Z" />
+    <!-- Screen inner -->
+    <path
+        android:fillColor="#FF1A1A2E"
+        android:pathData="M95,36 L225,36 C226,36 227,37 227,38 L227,112 C227,113 226,114 225,114 L95,114 C94,114 93,113 93,112 L93,38 C93,37 94,36 95,36 Z" />
+    <!-- Play button on screen -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M148,60 L148,90 L175,75 Z" />
+    <!-- TV stand -->
+    <path
+        android:fillColor="#FF3700B3"
+        android:pathData="M130,120 L190,120 L190,128 L130,128 Z" />
+    <path
+        android:fillColor="#FF3700B3"
+        android:pathData="M120,128 L200,128 L200,134 L120,134 Z" />
+    <!-- Text: ScreenCast TV -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M75,155 L78,145 L80,145 L83,155 L81,155 L80.5,153 L77.5,153 L77,155 Z M78,151.5 L80,151.5 L79,147.5 Z" />
+</vector>
