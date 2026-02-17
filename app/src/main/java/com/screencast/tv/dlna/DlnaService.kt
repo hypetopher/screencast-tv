@@ -48,7 +48,7 @@ class DlnaService : Service() {
 
     private fun startDlnaServer() {
         val localIp = NetworkUtils.getLocalIpAddress() ?: "0.0.0.0"
-        Log.d(TAG, "Starting DLNA on $localIp:$DLNA_PORT")
+        Log.i(TAG, "Starting DLNA on $localIp:$DLNA_PORT")
 
         avTransport = AVTransportService(
             onCastEvent = { event -> broadcastCastEvent(event) },
@@ -57,19 +57,22 @@ class DlnaService : Service() {
             getIsPlaying = { getSharedIsPlaying() }
         )
 
-        dlnaServer = DlnaServer(DLNA_PORT, deviceUuid, "ScreenCast TV", avTransport!!).also {
+        Thread {
             try {
-                it.start()
-                Log.d(TAG, "DLNA HTTP server started on port $DLNA_PORT")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to start DLNA server", e)
-            }
-        }
+                val server = tryStartServer(DLNA_PORT) ?: tryStartServer(0)
 
-        ssdpHandler = SsdpHandler(deviceUuid, DLNA_PORT, localIp).also {
-            it.start()
-            it.sendAlive()
-        }
+                dlnaServer = server
+                val actualPort = server?.listeningPort ?: DLNA_PORT
+
+                ssdpHandler = SsdpHandler(deviceUuid, actualPort, localIp).also {
+                    it.start()
+                    it.sendAlive()
+                }
+                Log.i(TAG, "DLNA + SSDP ready on port $actualPort")
+            } catch (e: Exception) {
+                Log.e(TAG, "DLNA startup thread crashed", e)
+            }
+        }.start()
     }
 
     private fun stopDlnaServer() {
@@ -77,6 +80,28 @@ class DlnaService : Service() {
         dlnaServer?.stop()
         ssdpHandler = null
         dlnaServer = null
+    }
+
+    private fun tryStartServer(port: Int): DlnaServer? {
+        Log.i(TAG, "Attempting DLNA server on port $port")
+        var server: DlnaServer? = null
+        try {
+            server = DlnaServer(port, deviceUuid, "ScreenCast TV", avTransport!!)
+            server.start()
+            Thread.sleep(1000)
+            if (server.isAlive) {
+                Log.i(TAG, "DLNA HTTP server started on port ${server.listeningPort}")
+                return server
+            } else {
+                Log.w(TAG, "DLNA server on port $port not alive after start")
+                server.stop()
+                return null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start DLNA server on port $port: ${e.javaClass.simpleName}: ${e.message}")
+            try { server?.stop() } catch (_: Exception) {}
+            return null
+        }
     }
 
     private fun broadcastCastEvent(event: CastEvent) {

@@ -106,9 +106,8 @@ class AirPlayMirrorStreamProcessor {
                 0 -> {
                     val decrypted = decryptPayload(payload)
                     val packet = MirrorPacket.Video(decrypted)
-                    // Non-blocking offer — if queue is full, drop oldest frame to make room
                     if (!queue.offer(packet)) {
-                        queue.poll() // drop oldest
+                        queue.poll()
                         queue.offer(packet)
                         dropped++
                         if (dropped % 10 == 1L) {

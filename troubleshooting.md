@@ -352,3 +352,68 @@ Attempted to implement Miracast (Wi-Fi Display) sink functionality for Android p
 - `setWfdInfo()` throws `SecurityException` ("Wifi Display Permission denied") — requires `CONFIGURE_WIFI_DISPLAY` system permission that only system-signed apps can hold.
 - The system Miracast service (`com.droidlogic.miracast`) on the TV box is a separate app with its own UI — it cannot be leveraged by a third-party app for WFD advertisement.
 - Without system-level WFD permission, a regular app cannot make the device discoverable as a Miracast sink.
+
+---
+
+## Issues on Amlogic Android 9 TV (192.168.2.116) — 2026-02-17
+
+### Issue 1: DLNA Not Discoverable from Android Phone
+
+**Symptom**: "ScreenCast TV" does not appear in Android phone casting/DLNA app device lists.
+
+**Root Cause**: `DlnaService: Failed to start DLNA server` — `java.net.BindException: bind failed: EADDRINUSE (Address already in use)` on port 49152. The hardcoded DLNA port conflicts with another service on this device (or a previous app instance scheduled for restart by Android's service recovery). When the HTTP server fails to start, SSDP M-SEARCH responses include a dead URL, so no DLNA controller can reach the device description.
+
+**Fix**:
+- Add port fallback: if the preferred port (49152) is unavailable, bind to an OS-assigned port.
+- Pass the actual bound port to `SsdpHandler` so SSDP responses advertise the correct URL.
+
+### Issue 2: iPhone Screen Mirroring Shows Black Screen
+
+**Symptom**: iPhone successfully connects for mirroring (MirrorActivity launches, mirror TCP sink accepts connection), but the TV screen stays black.
+
+**Root Cause (confirmed from logcat)**:
+1. Mirror sink port 7100 is also `EADDRINUSE` — falls back to random port, which works.
+2. Amlogic hardware decoder (`OMX.amlogic.avc.decoder.awesome`) logs: `setPortMode on output to DynamicANWBuffer failed w/ err -2147483648`. This Amlogic-specific OMX decoder does not fully support the DynamicANWBuffer output mode that MediaCodec uses by default on Android 9+. The decoder initializes but fails to produce output frames, resulting in a black screen.
+
+**Fix**:
+- Added port fallback in `DlnaService.kt`: `tryStartServer()` first tries port 49152, then falls back to port 0 (OS-assigned). Server startup moved to background thread to avoid ANR.
+- Actual bound port passed to `SsdpHandler` so SSDP LOCATION URLs are correct.
+
+### Issue 2: iPhone Screen Mirroring — Hardware Decoder Check
+
+**Symptom**: iPhone successfully connects for mirroring (MirrorActivity launches, mirror TCP sink accepts connection), but the TV screen stays black on devices with broken hardware decoders.
+
+**Root Cause (confirmed from logcat)**:
+1. Amlogic hardware decoder (`OMX.amlogic.avc.decoder.awesome`) accepts input frames but produces 0 output frames. After 186 frames over 3 seconds, still zero output.
+2. Software decoder (`OMX.google.h264.decoder`) works but is too slow for 1080p real-time on this CPU — causes massive frame drops (300+/minute), unusable quality.
+
+**Fix**:
+- Hardware-only decoder with watchdog: if no output after 30 frames / 2 seconds, sets `hwDecoderFailed` flag and stops decoding.
+- `errorListener` callback added to `AirPlayMirrorRenderer` — `MirrorActivity` wires it up to show a Toast: "Hardware video decoder not supported on this device".
+- Software decoder fallback was tested and removed — too slow for real-time 1080p on low-end CPUs.
+
+### Issue 3: iPhone Video Casting Works
+
+**Confirmed**: AirPlay video casting (HLS playback via ExoPlayer) works correctly on this device — ExoPlayer handles its own decoder selection and avoids the problematic Amlogic OMX component.
+
+---
+
+## Device Standby Prevention — Added (2026-02-17)
+
+### Problem
+Android TV goes into standby mode during video casting, interrupting playback/mirroring.
+
+### Fix
+Added `FLAG_KEEP_SCREEN_ON` to both casting activities:
+- `MirrorActivity` — prevents standby during AirPlay screen mirroring
+- `PlaybackActivity` — prevents standby during DLNA/AirPlay video casting
+
+The flag is automatically cleared when the activity finishes, so normal standby behavior resumes after casting ends. No permissions required.
+
+---
+
+## Log Visibility on Android 9 — Note (2026-02-17)
+
+On the Amlogic Android 9 TV, `Log.d()` messages are filtered/invisible in logcat output. All critical diagnostic logs were changed to `Log.i()` or higher in:
+- `AirPlayServer.kt` — RTSP SETUP stream negotiation logs
+- `AirPlayAudioReceiver.kt` — audio pipeline status logs

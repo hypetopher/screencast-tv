@@ -5,7 +5,9 @@ import android.util.Log
 import android.view.Gravity
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.Toast
 import androidx.fragment.app.FragmentActivity
 import com.screencast.tv.airplay.mirror.AirPlayMirrorRenderer
 import com.screencast.tv.common.CastEvent
@@ -40,6 +42,7 @@ class MirrorActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_mirror)
 
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         Log.d(TAG, "Mirror activity started")
 
         val surfaceView = findViewById<SurfaceView>(R.id.mirror_surface)
@@ -50,10 +53,19 @@ class MirrorActivity : FragmentActivity() {
         AirPlayMirrorRenderer.dimensionListener = { videoWidth, videoHeight ->
             runOnUiThread { resizeSurfaceView(videoWidth, videoHeight) }
         }
+
+        // Listen for hardware decoder failure
+        AirPlayMirrorRenderer.errorListener = { message ->
+            runOnUiThread {
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                Log.e(TAG, "Mirror error: $message")
+            }
+        }
     }
 
     override fun onDestroy() {
         AirPlayMirrorRenderer.dimensionListener = null
+        AirPlayMirrorRenderer.errorListener = null
         AirPlayMirrorRenderer.reset()
         CastEventBus.unregister(castListener)
         super.onDestroy()

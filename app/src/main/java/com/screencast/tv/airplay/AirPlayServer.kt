@@ -137,12 +137,12 @@ class AirPlayServer(
     }
 
     private fun handleRtspSetup(request: Request): Response {
-        Log.d(TAG, "RTSP SETUP uri=${request.uri}, content-type=${request.headers["content-type"]}, body=${request.body.size} bytes")
+        Log.i(TAG, "RTSP SETUP uri=${request.uri}, content-type=${request.headers["content-type"]}, body=${request.body.size} bytes")
 
         val setupReq = parseSetupRequest(request.body)
         val streamTypes = setupReq?.streamTypes ?: emptyList()
         val streamlessMirroringSession = streamTypes.isEmpty() && (setupReq?.isScreenMirroringSession == true)
-        Log.d(
+        Log.i(
             TAG,
             "RTSP SETUP parsed stream types=$streamTypes, source=${setupReq?.streamSource}, mirroring=${setupReq?.isScreenMirroringSession}, streamlessMirroring=$streamlessMirroringSession, hasEiv=${setupReq?.hasEiv}, hasEkey=${setupReq?.hasEkey}, timingRemotePort=${setupReq?.timingRemotePort}, keys=${setupReq?.rootKeys}"
         )
@@ -236,7 +236,7 @@ class AirPlayServer(
         val audioControlPort = audioReceiver?.controlPort ?: -1
         val eventPort = rtspPort
         val timingPort = timingClient?.localPort ?: -1
-        Log.d(
+        Log.i(
             TAG,
             "RTSP SETUP response: ${responseBody.size} bytes, mirrorPort=$mirrorPort, audioDataPort=$audioDataPort, audioControlPort=$audioControlPort, eventPort=$eventPort, timingPort=$timingPort"
         )

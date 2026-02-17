@@ -73,7 +73,7 @@ class AirPlayAudioReceiver {
         dataSocket?.soTimeout = 1000
         controlSocket?.soTimeout = 1000
 
-        Log.d(TAG, "Audio UDP sockets: data=${dataSocket?.localPort}, control=${controlSocket?.localPort}")
+        Log.i(TAG, "Audio UDP sockets: data=${dataSocket?.localPort}, control=${controlSocket?.localPort}")
 
         Thread({
             val buf = ByteArray(MAX_PACKET_SIZE)
@@ -97,7 +97,7 @@ class AirPlayAudioReceiver {
         aesIv = eiv.copyOf()
         val keyHex = eaesKey.joinToString("") { "%02x".format(it) }
         val ivHex = eiv.joinToString("") { "%02x".format(it) }
-        Log.d(TAG, "Audio decryption configured key=$keyHex iv=$ivHex")
+        Log.i(TAG, "Audio decryption configured key=$keyHex iv=$ivHex")
     }
 
     fun stop() {
@@ -140,7 +140,7 @@ class AirPlayAudioReceiver {
         var duplicates = 0L
         var outOfOrder = 0L
 
-        Log.d(TAG, "Audio receive loop started on port ${dataSocket?.localPort}")
+        Log.i(TAG, "Audio receive loop started on port ${dataSocket?.localPort}")
 
         while (running) {
             try {

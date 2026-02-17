@@ -12,6 +12,8 @@ object AirPlayMirrorRenderer {
     private const val TAG = "AirPlayMirrorRenderer"
     private const val MIME_AVC = "video/avc"
     private const val TIMEOUT_US = 10_000L
+    private const val WATCHDOG_MS = 2000L
+    private const val WATCHDOG_MIN_FRAMES = 30
 
     private val lock = Any()
     private var surface: Surface? = null
@@ -27,9 +29,14 @@ object AirPlayMirrorRenderer {
     private var droppedPayloads = 0L
     private var lastVideoWidth = 0
     private var lastVideoHeight = 0
+    private var firstInputTime = 0L
+    private var hwDecoderFailed = false
 
     /** Listener for actual decoded video dimension changes (from crop rect). */
     var dimensionListener: ((videoWidth: Int, videoHeight: Int) -> Unit)? = null
+
+    /** Listener called when hardware decoder is not available. */
+    var errorListener: ((message: String) -> Unit)? = null
 
     fun attachSurface(newSurface: Surface) {
         synchronized(lock) {
@@ -59,6 +66,8 @@ object AirPlayMirrorRenderer {
             droppedPayloads = 0
             lastVideoWidth = 0
             lastVideoHeight = 0
+            firstInputTime = 0L
+            hwDecoderFailed = false
         }
     }
 
@@ -81,6 +90,8 @@ object AirPlayMirrorRenderer {
 
     fun onVideoPayload(payload: ByteArray) {
         receivedPayloads++
+        if (hwDecoderFailed) return
+
         val annexB = avccToAnnexB(payload)
         if (annexB == null) {
             droppedPayloads++
@@ -132,8 +143,20 @@ object AirPlayMirrorRenderer {
                 c.queueInputBuffer(inputIndex, 0, annexB.size, System.nanoTime() / 1000L, 0)
                 drainOutputLocked(c)
                 frameCounter++
+                if (firstInputTime == 0L) firstInputTime = System.currentTimeMillis()
                 if (frameCounter % 120 == 0L) {
-                    Log.d(TAG, "Frames=$frameCounter output=$outputFrameCounter dropped=$droppedPayloads/$receivedPayloads")
+                    val elapsed = (System.currentTimeMillis() - firstInputTime) / 1000.0
+                    val fps = if (elapsed > 0) "%.1f".format(outputFrameCounter / elapsed) else "?"
+                    Log.i(TAG, "Frames in=$frameCounter out=$outputFrameCounter fps=$fps dropped=$droppedPayloads/$receivedPayloads")
+                }
+                // Watchdog: if hardware decoder produces no output, notify and stop
+                if (frameCounter >= WATCHDOG_MIN_FRAMES && outputFrameCounter == 0L &&
+                    System.currentTimeMillis() - firstInputTime > WATCHDOG_MS) {
+                    Log.e(TAG, "Hardware decoder produced 0 output after $frameCounter frames in ${WATCHDOG_MS}ms")
+                    hwDecoderFailed = true
+                    releaseCodecLocked()
+                    errorListener?.invoke("Hardware video decoder not supported on this device")
+                    return
                 }
                 Unit
             } catch (e: Exception) {
@@ -164,25 +187,32 @@ object AirPlayMirrorRenderer {
 
     private fun recreateCodecLocked() {
         releaseCodecLocked()
+        if (hwDecoderFailed) return
         val s = surface ?: return
         val localCsd0 = csd0 ?: return
         val localCsd1 = csd1 ?: return
+        val format = MediaFormat.createVideoFormat(MIME_AVC, width, height).apply {
+            setByteBuffer("csd-0", ByteBuffer.wrap(localCsd0))
+            setByteBuffer("csd-1", ByteBuffer.wrap(localCsd1))
+            setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 2 * 1024 * 1024)
+            setInteger(MediaFormat.KEY_PRIORITY, 0) // real-time priority
+            try { setInteger("low-latency", 1) } catch (_: Exception) {}
+        }
+
         try {
-            val format = MediaFormat.createVideoFormat(MIME_AVC, width, height).apply {
-                setByteBuffer("csd-0", ByteBuffer.wrap(localCsd0))
-                setByteBuffer("csd-1", ByteBuffer.wrap(localCsd1))
-                setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 2 * 1024 * 1024)
-            }
-            codec = MediaCodec.createDecoderByType(MIME_AVC).also {
-                it.configure(format, s, null, 0)
-                it.start()
-            }
+            val hwCodec = MediaCodec.createDecoderByType(MIME_AVC)
+            Log.i(TAG, "Hardware decoder: ${hwCodec.name} for ${width}x$height")
+            hwCodec.configure(format, s, null, 0)
+            hwCodec.start()
+            codec = hwCodec
             frameCounter = 0
             outputFrameCounter = 0
-            Log.d(TAG, "MediaCodec started ${width}x$height")
+            firstInputTime = 0L
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start MediaCodec", e)
+            Log.e(TAG, "Failed to create hardware decoder", e)
             releaseCodecLocked()
+            hwDecoderFailed = true
+            errorListener?.invoke("Hardware video decoder not available: ${e.message}")
         }
     }
 
