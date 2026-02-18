@@ -7,12 +7,16 @@ import android.os.Looper
 import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.MergingMediaSource
+import androidx.media3.exoplayer.source.SingleSampleMediaSource
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 
@@ -78,13 +82,22 @@ class VideoPlayerManager(context: Context) {
         callbacks.remove(callback)
     }
 
-    fun playUrl(url: String, startPositionMs: Long = 0) {
+    fun playUrl(url: String, startPositionMs: Long = 0, subtitleUrl: String? = null) {
         handler.post {
             try {
-                Log.d(TAG, "playUrl: $url, startPos: $startPositionMs")
+                Log.d(TAG, "playUrl: $url, startPos: $startPositionMs, subtitle: $subtitleUrl")
 
                 val uri = Uri.parse(url)
-                val mediaSource = buildMediaSource(uri, url)
+                var mediaSource = buildMediaSource(uri, url)
+
+                // Merge external subtitle source if provided
+                if (!subtitleUrl.isNullOrBlank()) {
+                    val subtitleSource = buildSubtitleSource(subtitleUrl)
+                    if (subtitleSource != null) {
+                        mediaSource = MergingMediaSource(mediaSource, subtitleSource)
+                        Log.d(TAG, "Merged external subtitle source: $subtitleUrl")
+                    }
+                }
 
                 exoPlayer.setMediaSource(mediaSource)
                 exoPlayer.prepare()
@@ -92,12 +105,97 @@ class VideoPlayerManager(context: Context) {
                     exoPlayer.seekTo(startPositionMs)
                 }
                 exoPlayer.playWhenReady = true
+
+                // Enable text tracks (for both external subtitles and embedded HLS subtitles)
+                enableTextTracks()
+
                 Log.d(TAG, "Playback started")
             } catch (e: Exception) {
                 Log.e(TAG, "Error starting playback", e)
                 callbacks.forEach { it.onError(e.message ?: "Failed to start playback") }
             }
         }
+    }
+
+    private fun buildSubtitleSource(subtitleUrl: String): SingleSampleMediaSource? {
+        return try {
+            val uri = Uri.parse(subtitleUrl)
+            val mimeType = detectSubtitleMimeType(subtitleUrl)
+            Log.d(TAG, "Building subtitle source: $subtitleUrl, mimeType: $mimeType")
+
+            val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+                .setConnectTimeoutMs(15000)
+                .setReadTimeoutMs(15000)
+                .setAllowCrossProtocolRedirects(true)
+
+            val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(uri)
+                .setMimeType(mimeType)
+                .setLanguage("und")
+                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                .build()
+
+            SingleSampleMediaSource.Factory(httpDataSourceFactory)
+                .createMediaSource(subtitleConfig, C.TIME_UNSET)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error building subtitle source", e)
+            null
+        }
+    }
+
+    private fun detectSubtitleMimeType(url: String): String {
+        val lower = url.lowercase()
+        return when {
+            lower.contains(".srt") -> MimeTypes.APPLICATION_SUBRIP
+            lower.contains(".vtt") || lower.contains(".webvtt") -> MimeTypes.TEXT_VTT
+            lower.contains(".ass") || lower.contains(".ssa") -> MimeTypes.TEXT_SSA
+            lower.contains(".ttml") || lower.contains(".dfxp") -> MimeTypes.APPLICATION_TTML
+            else -> MimeTypes.APPLICATION_SUBRIP // default to SRT
+        }
+    }
+
+    private fun enableTextTracks() {
+        // Auto-select text tracks once the player is ready
+        exoPlayer.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) {
+                    selectFirstTextTrack()
+                    exoPlayer.removeListener(this)
+                }
+            }
+        })
+    }
+
+    private fun selectFirstTextTrack() {
+        val trackGroups = exoPlayer.currentTracks.groups
+        // Log all available tracks for debugging
+        for (group in trackGroups) {
+            val typeStr = when (group.type) {
+                C.TRACK_TYPE_VIDEO -> "VIDEO"
+                C.TRACK_TYPE_AUDIO -> "AUDIO"
+                C.TRACK_TYPE_TEXT -> "TEXT"
+                else -> "TYPE_${group.type}"
+            }
+            for (i in 0 until group.length) {
+                val format = group.getTrackFormat(i)
+                Log.d(TAG, "Track: type=$typeStr, id=${group.mediaTrackGroup.id}, " +
+                        "index=$i, mime=${format.sampleMimeType}, " +
+                        "lang=${format.language}, label=${format.label}, " +
+                        "selected=${group.isTrackSelected(i)}, supported=${group.isTrackSupported(i)}")
+            }
+        }
+        // Select text tracks
+        for (group in trackGroups) {
+            if (group.type == C.TRACK_TYPE_TEXT && group.length > 0) {
+                val override = TrackSelectionOverride(group.mediaTrackGroup, 0)
+                exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                    .buildUpon()
+                    .setOverrideForType(override)
+                    .build()
+                Log.d(TAG, "Auto-selected text track: ${group.mediaTrackGroup.id}")
+                return
+            }
+        }
+        Log.d(TAG, "No text tracks available to select")
     }
 
     private fun buildMediaSource(uri: Uri, url: String): MediaSource {

@@ -54,15 +54,19 @@ class AVTransportService(
             .replace("&amp;", "&")
         val title = extractXmlValue(decodedMetadata, "dc:title")
 
+        // Parse subtitle URL from DIDL-Lite metadata
+        val subtitleUrl = parseSubtitleUrl(decodedMetadata)
+
         Log.d(TAG, "SetAVTransportURI raw URI: '$currentUri'")
         Log.d(TAG, "SetAVTransportURI metadata: '$currentMetadata'")
         Log.d(TAG, "SetAVTransportURI title: '$title'")
+        Log.d(TAG, "SetAVTransportURI subtitleUrl: '$subtitleUrl'")
 
         val url = currentUri
         if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
             Log.d(TAG, "Valid URL, starting playback: $url")
             transportState = "TRANSITIONING"
-            onCastEvent(CastEvent.Play(url, title))
+            onCastEvent(CastEvent.Play(url, title, subtitleUrl = subtitleUrl))
             transportState = "PLAYING"
         } else {
             Log.w(TAG, "Invalid or non-HTTP URI received: '$url'")
@@ -179,6 +183,55 @@ $body
 </s:Fault>
 </s:Body>
 </s:Envelope>"""
+    }
+
+    private fun parseSubtitleUrl(metadata: String): String? {
+        if (metadata.isBlank()) return null
+
+        // 1. Check Samsung DLNA extensions: sec:CaptionInfoEx and sec:CaptionInfo
+        val captionExUrl = extractXmlValue(metadata, "sec:CaptionInfoEx")
+        if (!captionExUrl.isNullOrBlank() && captionExUrl.startsWith("http")) {
+            Log.d(TAG, "Found subtitle via sec:CaptionInfoEx: $captionExUrl")
+            return captionExUrl
+        }
+        val captionUrl = extractXmlValue(metadata, "sec:CaptionInfo")
+        if (!captionUrl.isNullOrBlank() && captionUrl.startsWith("http")) {
+            Log.d(TAG, "Found subtitle via sec:CaptionInfo: $captionUrl")
+            return captionUrl
+        }
+
+        // 2. Check <res> elements with subtitle protocolInfo mime types
+        val subtitleMimeTypes = listOf(
+            "text/srt", "application/x-subrip",
+            "text/vtt", "text/webvtt",
+            "application/x-ssa", "text/x-ssa",
+            "application/x-ass", "text/x-ass",
+            "text/plain" // some apps send .srt as text/plain
+        )
+        val resRegex = Regex("""<res\s[^>]*>(.*?)</res>""", RegexOption.DOT_MATCHES_ALL)
+        val protocolRegex = Regex("""protocolInfo\s*=\s*"([^"]*)"""")
+        for (match in resRegex.findAll(metadata)) {
+            val fullMatch = match.value
+            val protocolInfo = protocolRegex.find(fullMatch)?.groupValues?.get(1) ?: ""
+            val resUrl = match.groupValues[1].trim()
+            if (subtitleMimeTypes.any { protocolInfo.contains(it, ignoreCase = true) } &&
+                resUrl.startsWith("http")) {
+                Log.d(TAG, "Found subtitle via <res> protocolInfo: $resUrl (protocol: $protocolInfo)")
+                return resUrl
+            }
+        }
+
+        // 3. Check <res> elements by URL extension as fallback
+        for (match in resRegex.findAll(metadata)) {
+            val resUrl = match.groupValues[1].trim()
+            if (resUrl.startsWith("http") &&
+                resUrl.matches(Regex(""".*\.(srt|vtt|ass|ssa|sub|ttml)(\?.*)?$""", RegexOption.IGNORE_CASE))) {
+                Log.d(TAG, "Found subtitle via <res> URL extension: $resUrl")
+                return resUrl
+            }
+        }
+
+        return null
     }
 
     private fun extractXmlValue(xml: String, tag: String): String? {

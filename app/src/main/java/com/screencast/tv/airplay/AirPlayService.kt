@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import com.screencast.tv.R
+import com.screencast.tv.common.AppPrefs
 import com.screencast.tv.common.CastEvent
 import com.screencast.tv.common.CastEventBus
 import com.screencast.tv.common.NetworkUtils
@@ -34,6 +35,7 @@ class AirPlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        AppPrefs.init(this)
         startForegroundNotification()
         acquireMulticastLock()
         startAirPlayServer()
@@ -80,7 +82,7 @@ class AirPlayService : Service() {
                 }
                 Log.d(TAG, "Registering mDNS on IP: $localIp")
                 val addr = java.net.InetAddress.getByName(localIp)
-                jmdns = JmDNS.create(addr, "ScreenCastTV")
+                jmdns = JmDNS.create(addr, AppPrefs.deviceName.replace(" ", ""))
 
                 val mac = NetworkUtils.getMacAddress()
                 val deviceId = NetworkUtils.macToString(mac)
@@ -108,7 +110,7 @@ class AirPlayService : Service() {
 
                 val airplayService = ServiceInfo.create(
                     "_airplay._tcp.local.",
-                    "ScreenCast TV",
+                    AppPrefs.deviceName,
                     AIRPLAY_PORT,
                     0, 0,
                     airplayProps
@@ -117,7 +119,7 @@ class AirPlayService : Service() {
                 Log.d(TAG, "mDNS _airplay._tcp registered on port $AIRPLAY_PORT")
 
                 // Also register RAOP service (required for AirPlay discovery on iOS)
-                val raopName = "${deviceId.replace(":", "")}@ScreenCast TV"
+                val raopName = "${deviceId.replace(":", "")}@${AppPrefs.deviceName}"
                 val raopProps = mapOf(
                     "am" to "AppleTV3,2",
                     "cn" to "0,1,2,3",

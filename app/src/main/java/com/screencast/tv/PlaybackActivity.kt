@@ -17,6 +17,7 @@ class PlaybackActivity : FragmentActivity() {
                     putString("video_url", intent.getStringExtra("video_url"))
                     putString("video_title", intent.getStringExtra("video_title"))
                     putDouble("start_position", intent.getDoubleExtra("start_position", 0.0))
+                    putString("subtitle_url", intent.getStringExtra("subtitle_url"))
                 }
             }
             supportFragmentManager.beginTransaction()

@@ -33,7 +33,7 @@ class DlnaServer(
 
     private fun serveDescription(): Response {
         val xml = """<?xml version="1.0" encoding="utf-8"?>
-<root xmlns="urn:schemas-upnp-org:device-1-0">
+<root xmlns="urn:schemas-upnp-org:device-1-0" xmlns:sec="http://www.sec.co.kr/dlna">
   <specVersion><major>1</major><minor>0</minor></specVersion>
   <device>
     <deviceType>urn:schemas-upnp-org:device:MediaRenderer:1</deviceType>
@@ -42,6 +42,8 @@ class DlnaServer(
     <modelName>ScreenCast TV</modelName>
     <modelNumber>1.0</modelNumber>
     <UDN>uuid:$deviceUuid</UDN>
+    <sec:ProductCap>smi,caption,subtitle</sec:ProductCap>
+    <sec:X_ProductCap>smi,caption,subtitle</sec:X_ProductCap>
     <serviceList>
       <service>
         <serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
@@ -283,7 +285,7 @@ class DlnaServer(
         val responseBody = when (action) {
             "GetProtocolInfo" -> """
                 <Source></Source>
-                <Sink>http-get:*:video/mp4:*,http-get:*:video/x-matroska:*,http-get:*:video/avi:*,http-get:*:application/x-mpegURL:*,http-get:*:video/mpeg:*,http-get:*:application/dash+xml:*</Sink>
+                <Sink>http-get:*:video/mp4:*,http-get:*:video/x-matroska:*,http-get:*:video/avi:*,http-get:*:application/x-mpegURL:*,http-get:*:video/mpeg:*,http-get:*:application/dash+xml:*,http-get:*:text/srt:*,http-get:*:application/x-subrip:*,http-get:*:text/vtt:*,http-get:*:application/x-ssa:*,http-get:*:application/x-ass:*,http-get:*:smi/caption:*,http-get:*:text/plain:*</Sink>
             """
             "GetCurrentConnectionIDs" -> "<ConnectionIDs>0</ConnectionIDs>"
             "GetCurrentConnectionInfo" -> """

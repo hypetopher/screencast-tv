@@ -12,6 +12,7 @@ import com.dd.plist.PropertyListParser
 import com.screencast.tv.airplay.mirror.AirPlayCryptoBridge
 import com.screencast.tv.airplay.mirror.AirPlayMirrorRenderer
 import com.screencast.tv.airplay.mirror.AirPlayMirrorStreamProcessor
+import com.screencast.tv.common.AppPrefs
 import com.screencast.tv.common.CastEvent
 import com.screencast.tv.common.NetworkUtils
 import java.net.DatagramPacket
@@ -569,7 +570,7 @@ class AirPlayServer(
         val root = NSDictionary()
         root.put("txtAirPlay", NSData(ByteArray(0)))
         root.put("features", NSNumber(130367356919L)) // (0x1E << 32) | 0x5A7FFFF7
-        root.put("name", "ScreenCast TV")
+        root.put("name", AppPrefs.deviceName)
         root.put("pi", "2e388006-13ba-4041-9a67-25dd4a43d536")
         root.put("vv", NSNumber(2))
         root.put("statusFlags", NSNumber(68))

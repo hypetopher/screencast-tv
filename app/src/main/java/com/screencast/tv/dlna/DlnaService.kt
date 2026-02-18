@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import com.screencast.tv.R
+import com.screencast.tv.common.AppPrefs
 import com.screencast.tv.common.CastEvent
 import com.screencast.tv.common.CastEventBus
 import com.screencast.tv.common.NetworkUtils
@@ -37,6 +38,7 @@ class DlnaService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        AppPrefs.init(this)
         startForegroundNotification()
         startDlnaServer()
     }
@@ -86,7 +88,7 @@ class DlnaService : Service() {
         Log.i(TAG, "Attempting DLNA server on port $port")
         var server: DlnaServer? = null
         try {
-            server = DlnaServer(port, deviceUuid, "ScreenCast TV", avTransport!!)
+            server = DlnaServer(port, deviceUuid, AppPrefs.deviceName, avTransport!!)
             server.start()
             Thread.sleep(1000)
             if (server.isAlive) {
